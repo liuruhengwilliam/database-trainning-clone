@@ -7,14 +7,18 @@ import sqlite3
 import re, os
 
 FX678_XAG_URL = 'http://api.q.fx678.com/quotes.php?exchName=WGJS&symbol=XAG'
-QUOTATION_STRUCTURE = [ 'startPrice','realPrice','maxPrice','minPrice','time']
-QUOTATION_DATABASE_STRUCTURE = '''create table quotation(
-    startPrice,
-    realPrice,
-    maxPrice,
-    minPrice,
-    time
-);'''
+QUOTATION_STRUCTURE = ('startPrice','realPrice','maxPrice','minPrice','time')
+
+QUOTATION_DB_CREATE = '''create table quotation(
+    id integer primary key autoincrement not null default 1,
+    startPrice   float,
+    realPrice    float,
+    maxPrice     float,
+    minPrice     float,
+    time         float);'''
+
+QUOTATION_DB_INSERT = 'insert into quotation (startPrice,realPrice,maxPrice,minPrice,time)\
+    values(?, ?, ?, ?, ?)'
 
 def queryInfo(url):
     '''获取并提取信息'''
@@ -28,16 +32,14 @@ def queryInfo(url):
         for item in content:
             tag.append(item.split(':')[0])
             value.append(item.split(':')[1].strip('[""]'))
-            #value.append(re.sub('\"]', '', re.sub('\["', '', item.split(':')[1])))
 
         infoDict = dict(zip(tag,value))
         print infoDict
     except (Exception),e:
         print "Exception: "+e.message
 
-    return dict(zip(QUOTATION_STRUCTURE,\
-        [infoDict[u'"p"'],infoDict[u'"b"'],infoDict[u'"h"'],infoDict[u'"l"'],\
-         time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(float(infoDict[u'"t"'])))]))
+    return [infoDict[u'"p"'],infoDict[u'"b"'],infoDict[u'"h"'],infoDict[u'"l"'],\
+         time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(float(infoDict[u'"t"'])))]
 
 def create_file_name_prefix():
     """ build database prefix"""
@@ -45,9 +47,6 @@ def create_file_name_prefix():
     year,week = dt.strftime('%Y'),dt.strftime('%U')
 
     fileNamePrefix = folderName = year+'-'+week
-    #quotation_filename = year+'-'+week+'.db'
-    #earnRate_filename = year+'-'+week+'ER'+'.db'
-    #print quotation_filename,earnRate_filename
 
     if not os.path.exists(folderName):
         # 创建当周数据库文件夹
@@ -55,26 +54,40 @@ def create_file_name_prefix():
 
     return fileNamePrefix
 
-def database_quotation(prefix):
+def db_quotation(prefix, priceList):
     '''行情数据库操作'''
     file = prefix+'/'+prefix+'.db'
+    isExist = os.path.exists(file)
 
     db = sqlite3.connect(file)
     dbCursor = db.cursor()
-    dbCursor.execute(QUOTATION_DATABASE_STRUCTURE)
+    #First: create db if empty
+    if not isExist:
+        try:
+            dbCursor.execute(QUOTATION_DB_CREATE)
+        except (Exception),e:
+            print "Exception: "+e.message
+
+    #Second: insert some information
+    try:
+        db.execute(QUOTATION_DB_INSERT,priceList)
+    except (Exception),e:
+        print "Exception: "+e.message
+
+    db.commit()
     dbCursor.close()
     db.close()
 
-def database_earnRate(prefix):
+def db_earnRate(prefix):
     '''盈利胜率数据库操作'''
 
 def main():
     '''main routine'''
-    priceDict = queryInfo(FX678_XAG_URL)
-    print priceDict
+    priceList = queryInfo(FX678_XAG_URL)
+    print priceList
 
     fileNamePrefix = create_file_name_prefix()
-    database_quotation(fileNamePrefix)
+    db_quotation(fileNamePrefix, priceList)
 
 if __name__ == '__main__':
     main()
